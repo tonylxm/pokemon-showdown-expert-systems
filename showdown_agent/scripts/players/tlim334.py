@@ -1,5 +1,6 @@
 from poke_env.battle import AbstractBattle
 from poke_env.player import Player
+from typing import Dict, List, Tuple
 
 team = """
 Pikachu @ Focus Sash  
@@ -74,3 +75,45 @@ class PokemonKnowledge:
             return "not_very_effective"
         else:
             return "no_effect"
+
+class DamageCalculator:
+    """Model-Based Reasoning System for damage calculations"""
+    
+    @staticmethod
+    def calculate_damage(attacker_stats: Dict, defender_stats: Dict, move_power: int, 
+                        type_effectiveness: float, is_physical: bool = True) -> Tuple[int, int]:
+        """
+        Calculate damage range using Pokémon damage formula
+        Returns (min_damage, max_damage) tuple
+        """
+        if move_power == 0 or type_effectiveness == 0:
+            return (0, 0)
+            
+        # Simplified damage calculation (Gen 9 formula)
+        level = 50  # Standard competitive level
+        
+        if is_physical:
+            attack = attacker_stats.get('attack', 100)
+            defense = defender_stats.get('defense', 100)
+        else:
+            attack = attacker_stats.get('spa', 100)  # Special Attack
+            defense = defender_stats.get('spd', 100)  # Special Defense
+            
+        # Base damage calculation
+        base_damage = ((2 * level / 5 + 2) * move_power * attack / defense / 50 + 2)
+        
+        # Apply type effectiveness
+        base_damage *= type_effectiveness
+        
+        # Apply random factor (85% to 100%)
+        min_damage = int(base_damage * 0.85)
+        max_damage = int(base_damage * 1.00)
+        
+        return (min_damage, max_damage)
+    
+    @staticmethod
+    def damage_percentage(damage: int, max_hp: int) -> float:
+        """Calculate damage as percentage of max HP"""
+        if max_hp == 0:
+            return 0.0
+        return min(100.0, (damage / max_hp) * 100)
