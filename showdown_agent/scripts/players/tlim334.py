@@ -4,25 +4,230 @@ from typing import Dict, List, Tuple, Optional
 from enum import Enum
 
 team = """
-Pikachu @ Focus Sash  
-Ability: Static  
-Tera Type: Electric  
-EVs: 8 HP / 248 SpA / 252 Spe  
-Timid Nature  
-IVs: 0 Atk  
-- Thunder Wave  
-- Thunder  
-- Reflect
-- Thunderbolt  
+Mewtwo @ Life Orb
+Ability: Pressure
+EVs: 252 SpA / 4 SpD / 252 Spe
+Timid Nature
+IVs: 0 Atk
+- Psystrike
+- Ice Beam
+- Focus Blast
+- Recover
+
+Toxapex @ Black Sludge
+Ability: Regenerator
+EVs: 248 HP / 8 Def / 252 SpD
+Calm Nature
+IVs: 0 Atk
+- Surf
+- Toxic
+- Recover
+- Haze
+
+Zacian-Crowned @ Rusted Sword
+Ability: Intrepid Sword
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Behemoth Blade
+- Play Rough
+- Close Combat
+- Swords Dance
+
+Kyogre @ Choice Specs
+Ability: Drizzle
+EVs: 252 HP / 252 SpA / 4 SpD
+Modest Nature
+IVs: 0 Atk
+- Water Spout
+- Origin Pulse
+- Thunder
+- Ice Beam
+
+Blissey @ Heavy-Duty Boots
+Ability: Natural Cure
+EVs: 252 HP / 252 Def / 4 SpD
+Bold Nature
+IVs: 0 Atk
+- Soft-Boiled
+- Seismic Toss
+- Thunder Wave
+- Stealth Rock
+
+Arceus @ Life Orb
+Ability: Multitype
+EVs: 252 HP / 252 SpA / 4 SpD
+Modest Nature
+IVs: 0 Atk
+- Judgment
+- Ice Beam
+- Earth Power
+- Recover
 """
 
 
-class CustomAgent(Player):
+class CustomAgent(Player):   
     def __init__(self, *args, **kwargs):
         super().__init__(team=team, *args, **kwargs)
-
+        
+        # Expert System Components
+        self.knowledge_base = PokemonKnowledge()
+        self.damage_calculator = DamageCalculator()
+        self.expert_rules = ExpertRules()
+        
+        # Decision tracking for learning/evaluation
+        self.decision_history = []
+        self.battle_count = 0
+    
     def choose_move(self, battle: AbstractBattle):
+        """
+        Expert System Decision Making Process
+        Implements hierarchical planning: Task -> Global -> Local -> Reactive
+        """
+        self.battle_count += 1
+        
+        # Phase 1: Assess Battle State (Perception)
+        battle_state = self._assess_battle_state(battle)
+        
+        # Phase 2: Strategic Planning (Task Planning)
+        strategy = self._determine_strategy(battle_state)
+        
+        # Phase 3: Action Selection (Local Planning)
+        action = self._select_action(battle, strategy)
+        
+        # Phase 4: Log Decision (Learning Component)
+        self._log_decision(battle_state, strategy, action)
+        
+        return action
+    
+    def _assess_battle_state(self, battle: AbstractBattle) -> Dict:
+        """Assess current battle state for expert system"""
+        state = {
+            "turn": battle.turn,
+            "my_active": battle.active_pokemon,
+            "opp_active": battle.opponent_active_pokemon,
+            "my_team_status": self._get_team_status(battle.team),
+            "field_conditions": {
+                "weather": getattr(battle, 'weather', None),
+                "my_side": getattr(battle, 'side_conditions', {}),
+                "opp_side": getattr(battle, 'opponent_side_conditions', {})
+            },
+            "threat_level": "unknown"
+        }
+        
+        # Assess threat level
+        if state["my_active"] and state["opp_active"]:
+            my_hp_frac = state["my_active"].current_hp_fraction
+            if my_hp_frac < 0.25:
+                state["threat_level"] = "critical"
+            elif my_hp_frac < 0.5:
+                state["threat_level"] = "high" 
+            else:
+                state["threat_level"] = "low"
+                
+        return state
+    
+    def _get_team_status(self, team: Dict) -> Dict:
+        """Get team status summary"""
+        status = {
+            "alive_count": 0,
+            "healthy_count": 0,
+            "available_switches": []
+        }
+        
+        for name, pokemon in team.items():
+            if not pokemon.fainted:
+                status["alive_count"] += 1
+                if pokemon.current_hp_fraction > 0.5:
+                    status["healthy_count"] += 1
+                if not pokemon.active:
+                    status["available_switches"].append(name)
+                    
+        return status
+    
+    def _determine_strategy(self, battle_state: Dict) -> str:
+        """High-level strategy determination"""
+        threat_level = battle_state["threat_level"]
+        alive_count = battle_state["my_team_status"]["alive_count"]
+        
+        # Strategic rules based on battle state
+        if threat_level == "critical":
+            if len(battle_state["my_team_status"]["available_switches"]) > 0:
+                return "emergency_switch"
+            else:
+                return "desperate_attack"
+        elif alive_count <= 2:
+            return "endgame_careful"
+        elif battle_state["turn"] <= 3:
+            return "early_game_setup"
+        else:
+            return "mid_game_aggressive"
+    
+    def _select_action(self, battle: AbstractBattle, strategy: str):
+        """Select specific action based on strategy"""
+        
+        # Rule 1: Check if switching is necessary/beneficial
+        should_switch, switch_reason, target_pokemon = self.expert_rules.should_switch(battle)
+        
+        if should_switch and strategy in ["emergency_switch", "endgame_careful"]:
+            if target_pokemon and target_pokemon in battle.team:
+                return self.create_order(battle.team[target_pokemon])
+        
+        # Rule 2: Select best move
+        if battle.active_pokemon and hasattr(battle, 'available_moves') and battle.available_moves:
+            move_evaluations = []
+            
+            for move in battle.available_moves:
+                priority, reasoning = self.expert_rules.evaluate_move_priority(battle, move.id)
+                move_evaluations.append((move, priority, reasoning))
+            
+            # Sort by priority and select best move
+            if move_evaluations:
+                move_evaluations.sort(key=lambda x: x[1], reverse=True)
+                best_move, best_priority, best_reasoning = move_evaluations[0]
+                return self.create_order(best_move)
+        
+        # Fallback: random move if expert system fails
         return self.choose_random_move(battle)
+    
+    def _log_decision(self, battle_state: Dict, strategy: str, action):
+        """Log decisions for analysis and learning"""
+        decision_record = {
+            "battle_count": self.battle_count,
+            "turn": battle_state["turn"],
+            "threat_level": battle_state["threat_level"],
+            "strategy": strategy,
+            "action_type": type(action).__name__,
+            "my_hp": battle_state["my_active"].current_hp_fraction if battle_state["my_active"] else 0,
+            "opp_hp": battle_state["opp_active"].current_hp_fraction if battle_state["opp_active"] else 0
+        }
+        
+        self.decision_history.append(decision_record)
+        
+        # Keep history manageable
+        if len(self.decision_history) > 1000:
+            self.decision_history = self.decision_history[-500:]
+    
+    def get_performance_metrics(self) -> Dict:
+        """Get performance metrics for evaluation"""
+        if not self.decision_history:
+            return {"error": "No decision history"}
+            
+        total_decisions = len(self.decision_history)
+        strategy_counts = {}
+        threat_response = {"critical": 0, "high": 0, "low": 0}
+        
+        for decision in self.decision_history:
+            strategy = decision["strategy"]
+            strategy_counts[strategy] = strategy_counts.get(strategy, 0) + 1
+            threat_response[decision["threat_level"]] += 1
+        
+        return {
+            "total_decisions": total_decisions,
+            "battles_played": self.battle_count,
+            "strategy_distribution": strategy_counts,
+            "threat_response_distribution": threat_response,
+            "avg_decisions_per_battle": total_decisions / max(1, self.battle_count)
+        }
 
 # Expert System Knowledge Base
 class PokemonKnowledge:
