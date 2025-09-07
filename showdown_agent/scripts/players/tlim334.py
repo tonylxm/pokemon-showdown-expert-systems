@@ -78,6 +78,9 @@ class CustomAgent(Player):
         self.decision_history = []
         self.battle_count = 0
     
+    def teampreview(self, _):
+        return "/team 123456"
+    
     def choose_move(self, battle: AbstractBattle):
         """
         Expert System Decision Making Process
